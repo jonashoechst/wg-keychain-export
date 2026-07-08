@@ -2,7 +2,7 @@
 
 [![Shell Check](https://github.com/jonashoechst/wg-keychain-export/actions/workflows/shell-check.yml/badge.svg)](https://github.com/jonashoechst/wg-keychain-export/actions/workflows/shell-check.yml)
 [![License: MIT](https://img.shields.io/github/license/jonashoechst/wg-keychain-export)](LICENSE)
-[![Version](https://img.shields.io/badge/calver-2026.07.1-blue)](https://github.com/jonashoechst/wg-keychain-export/releases)
+[![Release](https://img.shields.io/github/v/release/jonashoechst/wg-keychain-export?label=calver)](https://github.com/jonashoechst/wg-keychain-export/releases/latest)
 ![macOS](https://img.shields.io/badge/platform-macOS-blue)
 ![Shell](https://img.shields.io/badge/shell-bash-4EAA25?logo=gnu-bash&logoColor=white)
 
