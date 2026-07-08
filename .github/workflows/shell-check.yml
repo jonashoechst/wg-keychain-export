@@ -14,7 +14,7 @@ jobs:
     name: ShellCheck
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Run ShellCheck
         uses: ludeeus/action-shellcheck@2.0.0
@@ -26,10 +26,13 @@ jobs:
     name: shfmt
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
+
+      - name: Install shfmt
+        run: |
+          curl -sSLo shfmt https://github.com/mvdan/sh/releases/download/v3.13.1/shfmt_v3.13.1_linux_amd64
+          chmod +x shfmt
+          sudo mv shfmt /usr/local/bin/
 
       - name: Check shell formatting
-        uses: mvdan/sh@v3
-        with:
-          shfmt: -d -i 4 -bn -ci
-          path: wg-keychain-export
+        run: shfmt -d -i 4 -bn -ci wg-keychain-export
