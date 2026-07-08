@@ -1,0 +1,59 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - '*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Validate version
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          tag="${tag#v}"
+          version="$(tr -d '[:space:]' < VERSION)"
+
+          if [[ "$tag" != "$version" ]]; then
+            echo "Tag '$tag' does not match VERSION file ('$version')" >&2
+            exit 1
+          fi
+
+      - name: Extract changelog for tag
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          tag="${tag#v}"
+
+          if ! grep -qE "^## \[${tag}\]" CHANGELOG.md; then
+            echo "No changelog section found for version ${tag}" >&2
+            exit 1
+          fi
+
+          awk -v version="$tag" '
+            /^## \[/ {
+              if (in_section) exit
+              if ($0 ~ "^## \\[" version "\\]") {
+                in_section = 1
+                next
+              }
+            }
+            in_section { print }
+          ' CHANGELOG.md | sed '/./,$!d' > release-notes.md
+
+          echo "Release notes:"
+          cat release-notes.md
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v3
+        with:
+          name: ${{ github.ref_name }}
+          body_path: release-notes.md
+          files: wg-keychain-export
+          generate_release_notes: false
