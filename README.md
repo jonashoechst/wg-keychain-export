@@ -87,4 +87,4 @@ To avoid repeated prompts, open **Keychain Access**, find the WireGuard entries,
 
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE).
