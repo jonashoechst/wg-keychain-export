@@ -1,0 +1,5 @@
+# Exported WireGuard configs (contain private keys)
+wg-quick/
+
+# macOS
+.DS_Store

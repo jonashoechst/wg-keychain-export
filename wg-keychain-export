@@ -1,0 +1,282 @@
+#!/usr/bin/env bash
+#
+# wg-keychain-export — Export WireGuard tunnel configs from the macOS Keychain.
+#
+
+set -euo pipefail
+
+readonly WG_SERVICE="com.wireguard.macos"
+readonly WG_LABEL_PREFIX="WireGuard Tunnel: "
+
+KEYCHAIN="${HOME}/Library/Keychains/login.keychain-db"
+OUTPUT_DIR="./wg-quick"
+TUNNEL_FILTER=""
+LIST_ONLY=false
+
+usage() {
+    cat <<'EOF'
+Usage: wg-keychain-export [OPTIONS]
+
+Export WireGuard tunnel configurations from the macOS Keychain to wg-quick
+compatible .conf files.
+
+Options:
+  --keychain PATH   Keychain database file
+                    (default: ~/Library/Keychains/login.keychain-db)
+  --output DIR      Output directory (default: ./wg-quick)
+  --tunnel NAME     Export only the named tunnel
+  --list            List available tunnels without exporting
+  -h, --help        Show this help message
+EOF
+}
+
+die() {
+    echo "Error: $*" >&2
+    exit 1
+}
+
+warn() {
+    echo "Warning: $*" >&2
+}
+
+# Expand ~ in paths.
+expand_path() {
+    local path="$1"
+    if [[ "$path" == "~/"* ]]; then
+        printf '%s' "${HOME}/${path:2}"
+    elif [[ "$path" == "~" ]]; then
+        printf '%s' "$HOME"
+    else
+        printf '%s' "$path"
+    fi
+}
+
+parse_args() {
+    if [[ $# -eq 0 ]]; then
+        return 0
+    fi
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --keychain)
+                [[ $# -ge 2 ]] || die "missing value for --keychain"
+                KEYCHAIN="$(expand_path "$2")"
+                shift 2
+                ;;
+            --output)
+                [[ $# -ge 2 ]] || die "missing value for --output"
+                OUTPUT_DIR="$(expand_path "$2")"
+                shift 2
+                ;;
+            --tunnel)
+                [[ $# -ge 2 ]] || die "missing value for --tunnel"
+                TUNNEL_FILTER="$2"
+                shift 2
+                ;;
+            --list)
+                LIST_ONLY=true
+                shift
+                ;;
+            -h|--help)
+                usage
+                exit 0
+                ;;
+            *)
+                die "unknown option: $1 (use --help for usage)"
+                ;;
+        esac
+    done
+}
+
+require_security() {
+    command -v security >/dev/null 2>&1 || die "'security' command not found (macOS required)"
+}
+
+validate_keychain() {
+    if [[ ! -f "$KEYCHAIN" ]]; then
+        die "keychain not found: $KEYCHAIN"
+    fi
+}
+
+# Parse dump-keychain output and print tunnel names (one per line).
+list_tunnels() {
+    security dump-keychain "$KEYCHAIN" 2>/dev/null | awk -v service="$WG_SERVICE" -v prefix="$WG_LABEL_PREFIX" '
+        BEGIN {
+            in_genp = 0
+            svce = ""
+            labl = ""
+        }
+
+        /^class: "genp"$/ {
+            flush()
+            in_genp = 1
+            svce = ""
+            labl = ""
+            next
+        }
+
+        in_genp && /^class:/ {
+            flush()
+            in_genp = 0
+            next
+        }
+
+        in_genp && /"svce"<blob>="/ {
+            tmp = $0
+            sub(/^.*"svce"<blob>="/, "", tmp)
+            sub(/".*$/, "", tmp)
+            svce = tmp
+            next
+        }
+
+        in_genp && /"labl"<blob>="/ {
+            tmp = $0
+            sub(/^.*"labl"<blob>="/, "", tmp)
+            sub(/".*$/, "", tmp)
+            labl = tmp
+            next
+        }
+
+        # kSecAttrLabel (0x00000007) — used on newer macOS dump-keychain output.
+        in_genp && /0x00000007 <blob>="/ {
+            tmp = $0
+            sub(/^.*0x00000007 <blob>="/, "", tmp)
+            sub(/".*$/, "", tmp)
+            labl = tmp
+            next
+        }
+
+        END {
+            flush()
+        }
+
+        function flush() {
+            if (!in_genp) {
+                return
+            }
+            if (svce == service && index(labl, prefix) == 1) {
+                print substr(labl, length(prefix) + 1)
+            }
+        }
+    '
+}
+
+# Decode config when security returns hex-encoded wg-quick text.
+decode_config() {
+    local raw="$1"
+
+    if [[ "$raw" == *"[Interface]"* ]] || [[ "$raw" == *"[Peer]"* ]]; then
+        printf '%s' "$raw"
+        return 0
+    fi
+
+    if [[ "$raw" =~ ^[0-9a-fA-F]+$ ]] && (( ${#raw} % 2 == 0 )); then
+        local decoded
+        if decoded="$(printf '%s' "$raw" | xxd -r -p 2>/dev/null)"; then
+            if [[ "$decoded" == *"[Interface]"* ]] || [[ "$decoded" == *"[Peer]"* ]]; then
+                printf '%s' "$decoded"
+                return 0
+            fi
+        fi
+    fi
+
+    printf '%s' "$raw"
+}
+
+# Fetch the wg-quick config text for a tunnel by name.
+fetch_config() {
+    local tunnel_name="$1"
+    local label="${WG_LABEL_PREFIX}${tunnel_name}"
+    local raw
+
+    if ! raw="$(security find-generic-password \
+        -l "$label" \
+        -w "$KEYCHAIN" 2>/dev/null)"; then
+        return 1
+    fi
+
+    decode_config "$raw"
+}
+
+export_tunnel() {
+    local tunnel_name="$1"
+    local output_file="${OUTPUT_DIR}/${tunnel_name}.conf"
+    local config
+
+    if ! config="$(fetch_config "$tunnel_name")"; then
+        warn "access denied or tunnel not readable: '$tunnel_name'"
+        return 1
+    fi
+
+    if [[ -z "$config" ]]; then
+        warn "empty config for tunnel: '$tunnel_name'"
+        return 1
+    fi
+
+    printf '%s' "$config" >"$output_file"
+    # Ensure trailing newline for wg-quick compatibility.
+    [[ "$config" == *$'\n' ]] || printf '\n' >>"$output_file"
+    chmod 600 "$output_file"
+    echo "Exported: $output_file"
+}
+
+main() {
+    parse_args "$@"
+    require_security
+    validate_keychain
+
+    local tunnels=()
+    local tunnel
+
+    while IFS= read -r tunnel; do
+        [[ -n "$tunnel" ]] || continue
+        tunnels+=("$tunnel")
+    done < <(list_tunnels)
+
+    if [[ -n "$TUNNEL_FILTER" ]]; then
+        local found=false
+        local filtered=()
+        if ((${#tunnels[@]} > 0)); then
+            for tunnel in "${tunnels[@]}"; do
+                if [[ "$tunnel" == "$TUNNEL_FILTER" ]]; then
+                    filtered+=("$tunnel")
+                    found=true
+                    break
+                fi
+            done
+        fi
+        if [[ "$found" == false ]]; then
+            die "tunnel not found: '$TUNNEL_FILTER'"
+        fi
+        tunnels=("${filtered[@]}")
+    fi
+
+    if [[ ${#tunnels[@]} -eq 0 ]]; then
+        echo "No WireGuard tunnels found in keychain: $KEYCHAIN"
+        exit 0
+    fi
+
+    if [[ "$LIST_ONLY" == true ]]; then
+        for tunnel in "${tunnels[@]}"; do
+            echo "$tunnel"
+        done
+        exit 0
+    fi
+
+    umask 077
+    mkdir -p "$OUTPUT_DIR"
+
+    local failed=0
+    for tunnel in "${tunnels[@]}"; do
+        if ! export_tunnel "$tunnel"; then
+            failed=$((failed + 1))
+        fi
+    done
+
+    if [[ $failed -gt 0 ]]; then
+        warn "$failed tunnel(s) could not be exported"
+        exit 1
+    fi
+}
+
+main "$@"
