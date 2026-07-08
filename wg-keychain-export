@@ -5,6 +5,7 @@
 
 set -euo pipefail
 
+readonly VERSION="2026.07.1"
 readonly WG_SERVICE="com.wireguard.macos"
 readonly WG_LABEL_PREFIX="WireGuard Tunnel: "
 
@@ -26,6 +27,7 @@ Options:
   --output DIR      Output directory (default: ./wg-quick)
   --tunnel NAME     Export only the named tunnel
   --list            List available tunnels without exporting
+  -V, --version     Show version
   -h, --help        Show this help message
 EOF
 }
@@ -42,6 +44,7 @@ warn() {
 # Expand ~ in paths.
 expand_path() {
     local path="$1"
+    # shellcheck disable=SC2088
     if [[ "$path" == "~/"* ]]; then
         printf '%s' "${HOME}/${path:2}"
     elif [[ "$path" == "~" ]]; then
@@ -77,7 +80,11 @@ parse_args() {
                 LIST_ONLY=true
                 shift
                 ;;
-            -h|--help)
+            -V | --version)
+                echo "wg-keychain-export ${VERSION}"
+                exit 0
+                ;;
+            -h | --help)
                 usage
                 exit 0
                 ;;
@@ -170,7 +177,7 @@ decode_config() {
         return 0
     fi
 
-    if [[ "$raw" =~ ^[0-9a-fA-F]+$ ]] && (( ${#raw} % 2 == 0 )); then
+    if [[ "$raw" =~ ^[0-9a-fA-F]+$ ]] && ((${#raw} % 2 == 0)); then
         local decoded
         if decoded="$(printf '%s' "$raw" | xxd -r -p 2>/dev/null)"; then
             if [[ "$decoded" == *"[Interface]"* ]] || [[ "$decoded" == *"[Peer]"* ]]; then

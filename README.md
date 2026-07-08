@@ -1,5 +1,11 @@
 # wg-keychain-export
 
+[![Shell Check](https://github.com/jonashoechst/wg-keychain-export/actions/workflows/shell-check.yml/badge.svg)](https://github.com/jonashoechst/wg-keychain-export/actions/workflows/shell-check.yml)
+[![License: MIT](https://img.shields.io/github/license/jonashoechst/wg-keychain-export)](LICENSE)
+![Version](https://img.shields.io/badge/calver-2026.07.1-blue)
+![macOS](https://img.shields.io/badge/platform-macOS-blue)
+![Shell](https://img.shields.io/badge/shell-bash-4EAA25?logo=gnu-bash&logoColor=white)
+
 Export WireGuard tunnel configurations from the macOS Keychain to wg-quick compatible `.conf` files.
 
 ## Requirements
@@ -34,6 +40,7 @@ wg-keychain-export [OPTIONS]
 | `--output DIR` | Output directory (default: `./wg-quick`) |
 | `--tunnel NAME` | Export only the named tunnel |
 | `--list` | List available tunnels without exporting |
+| `-V, --version` | Show version |
 | `-h, --help` | Show help |
 
 ### Examples
@@ -84,6 +91,14 @@ To avoid repeated prompts, open **Keychain Access**, find the WireGuard entries,
 - **Keychain ACLs**: You must approve access to each tunnel's secret.
 - **`dump-keychain` parsing**: Listing tunnels relies on parsing undocumented `security dump-keychain` output; this may need updates after macOS changes.
 - **No code signing**: Unlike a signed app, a shell script cannot inherit WireGuard's Keychain trust; expect authorization dialogs.
+
+## Versioning
+
+This project uses [Calendar Versioning](https://calver.org/) (CalVer) in `YYYY.MM.MICRO` format:
+
+- **YYYY** — release year
+- **MM** — release month
+- **MICRO** — incremental release within that month
 
 ## License
 
